@@ -1,9 +1,10 @@
 import os
-from flask import Flask, request, Response
+from flask import Flask, request, Response, render_template, jsonify
 from dotenv import load_dotenv
 from twilio.request_validator import RequestValidator
 
 from whatsapp import handle_message, send_whatsapp_message
+from analyzer import fetch_stock_data, resolve_ticker, analyze_stock
 
 load_dotenv()
 
@@ -26,6 +27,29 @@ def whatsapp_webhook():
     send_whatsapp_message(sender, reply)
 
     return Response("", status=204)
+
+
+@app.route("/", methods=["GET"])
+def index():
+    return render_template("index.html")
+
+
+@app.route("/api/analyse", methods=["POST"])
+def api_analyse():
+    data = request.get_json(silent=True) or {}
+    query = (data.get("query") or "").strip()
+
+    if not query:
+        return jsonify({"error": "Please enter a stock, commodity, or crypto name."}), 400
+
+    ticker, asset_type = resolve_ticker(query)
+    stock_data = fetch_stock_data(ticker)
+
+    if stock_data is None or "error" in stock_data:
+        return jsonify({"error": f"Could not find data for \"{query}\". Try a ticker symbol like AAPL or TSLA."}), 404
+
+    result = analyze_stock(stock_data, asset_type)
+    return jsonify({"result": result, "ticker": ticker, "asset_type": asset_type})
 
 
 @app.route("/health", methods=["GET"])
